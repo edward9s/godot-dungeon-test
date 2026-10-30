@@ -58,7 +58,22 @@ jobs:
           timeout 30s "$RUNNER_TEMP/godot" --headless --path . --quit-after 8 2>&1 | tee "$RUNNER_TEMP/scene.log"
           if grep -E 'SCRIPT ERROR:|SHADER ERROR:|^ERROR:|Parse Error:' "$RUNNER_TEMP/core.log" "$RUNNER_TEMP/scene.log"; then exit 1; fi
 
+      - name: Verify default Godot icon configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e icon.svg
+          if grep -Eq '^config/icon=' project.godot; then
+            echo "::error::A project icon must not be configured."
+            exit 1
+          fi
+          if grep -Eq '^launcher_icons/' export_presets.cfg; then
+            echo "::error::An Android launcher icon must not be configured."
+            exit 1
+          fi
+
       - name: Configure Android exporter
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
@@ -114,7 +129,7 @@ jobs:
           test -x "$analyzer"
           package_id="$("$analyzer" manifest application-id build/GodotCore-release-arm64.apk)"
           test "$package_id" = "com.edward9s.godotandroidcore"
-          test "$("$APK_ANALYZER" manifest debuggable build/GodotCore-release-arm64.apk)" = "false"
+          test "$("$analyzer" manifest debuggable build/GodotCore-release-arm64.apk)" = "false"
           echo "Verified release package: $package_id"
           python3 - <<'PYAPK'
           import zipfile
