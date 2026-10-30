@@ -1,0 +1,81 @@
+name: Android core build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          test -x "$sdkmanager"
+          yes | "$sdkmanager" --licenses >/dev/null 2>&1 || true
+          "$sdkmanager" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Install Godot 4.7.2 and templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=4.7.2
+          base="https://github.com/godotengine/godot/releases/download/$version-stable"
+          curl -fLsS --retry 3 "$base/Godot_v$version-stable_linux.x86_64.zip" -o "$RUNNER_TEMP/godot.zip"
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP"
+          mv "$RUNNER_TEMP/Godot_v$version-stable_linux.x86_64" "$RUNNER_TEMP/godot"
+          chmod +x "$RUNNER_TEMP/godot"
+          curl -fLsS --retry 3 "$base/Godot_v$version-stable_export_templates.tpz" -o "$RUNNER_TEMP/templates.tpz"
+          mkdir -p "$RUNNER_TEMP/templates" "$HOME/.local/share/godot/export_templates/$version.stable"
+          unzip -q "$RUNNER_TEMP/templates.tpz" -d "$RUNNER_TEMP/templates"
+          cp -a "$RUNNER_TEMP/templates/templates/." "$HOME/.local/share/godot/export_templates/$version.stable/"
+
+      - name: Import and run checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/godot" --headless --path . --editor --import --quit 2>&1 | tee "$RUNNER_TEMP/import.log"
+          if grep -E 'SCRIPT ERROR:|SHADER ERROR:|^ERROR:|Parse Error:' "$RUNNER_TEMP/import.log"; then exit 1; fi
+          "$RUNNER_TEMP/godot" --headless --path . --script tests/test_core.gd 2>&1 | tee "$RUNNER_TEMP/core.log"
+          grep -F "Core validation passed:" "$RUNNER_TEMP/core.log"
+          timeout 30s "$RUNNER_TEMP/godot" --headless --path . --quit-after 8 2>&1 | tee "$RUNNER_TEMP/scene.log"
+          if grep -E 'SCRIPT ERROR:|SHADER ERROR:|^ERROR:|Parse Error:' "$RUNNER_TEMP/core.log" "$RUNNER_TEMP/scene.log"; then exit 1; fi
+
+      - name: Configure Android exporter and create a debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.config/godot" build
+          cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          EOF
+          "$RUNNER_TEMP/godot" --headless --path . --export-debug Android build/GodotCore-debug-arm64.apk
+          test -s build/GodotCore-debug-arm64.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify build/GodotCore-debug-arm64.apk
+
+      - name: Store smoke-test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-core-debug-apk
+          path: build/GodotCore-debug-arm64.apk
+          if-no-files-found: error
+          retention-days: 7
