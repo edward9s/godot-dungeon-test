@@ -66,9 +66,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test ! -e icon.svg
-          if grep -Eq '^config/icon=' project.godot; then
-            echo "::error::A project icon must not be configured."
+          test -s icon.svg
+          if ! grep -Fxq 'config/icon="res://icon.svg"' project.godot; then
+            echo "::error::The Godot default project icon must be configured."
             exit 1
           fi
           if grep -Eq '^launcher_icons/' export_presets.cfg; then

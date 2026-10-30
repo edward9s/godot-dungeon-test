@@ -22,7 +22,7 @@ Open `project.godot` to inspect the reference scene.
 
 ## Android export
 
-The `Android core build` workflow runs headless validation on pull requests. Runs on `main` and manually dispatched runs export a signed arm64 release APK using the configured repository secrets. The launcher icon uses Godot's built-in default.
+The `Android core build` workflow runs headless validation on pull requests. Runs on `main` and manually dispatched runs export a signed arm64 release APK using the configured repository secrets. The launcher icon uses the stock Godot 4.7.2 default project SVG, included as `icon.svg`.
 
 The release export requires `KEYSTORE_BASE64`, `KEY_ALIAS`, `KEY_PASSWORD`, and `STORE_PASSWORD`. The signed APK is published to the public repository's rolling `test-build` prerelease under **Releases**.
 
