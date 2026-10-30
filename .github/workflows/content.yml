@@ -205,4 +205,5 @@ jobs:
 
       - name: Remove private signing keys
         if: always()
+        working-directory: ${{ github.workspace }}
         run: rm -f "$RUNNER_TEMP/source.jks" "$RUNNER_TEMP/release.p12"
