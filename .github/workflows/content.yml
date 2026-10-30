@@ -195,7 +195,6 @@ jobs:
           Build: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           if gh release view "$tag" --repo "edward9s/godot-dungeon-content" >/dev/null 2>&1; then
             gh release upload "$tag" "$apk" docs/captures/*.png docs/captures/*.json --clobber --repo "edward9s/godot-dungeon-content"
-            gh api -X PATCH "repos/edward9s/godot-dungeon-content/git/refs/tags/$tag" -f sha="$GITHUB_SHA" -F force=true >/dev/null
             gh release edit "$tag" --repo "edward9s/godot-dungeon-content" \
               --title "Dungeon APK (latest #$GITHUB_RUN_NUMBER)" --notes "$notes" --prerelease --latest=false
           else
