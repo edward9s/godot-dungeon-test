@@ -58,7 +58,7 @@ jobs:
           timeout 30s "$RUNNER_TEMP/godot" --headless --path . --quit-after 8 2>&1 | tee "$RUNNER_TEMP/scene.log"
           if grep -E 'SCRIPT ERROR:|SHADER ERROR:|^ERROR:|Parse Error:' "$RUNNER_TEMP/core.log" "$RUNNER_TEMP/scene.log"; then exit 1; fi
 
-      - name: Configure Android exporter and create a debug APK
+      - name: Configure Android exporter
         shell: bash
         run: |
           set -euo pipefail
@@ -70,14 +70,69 @@ jobs:
           export/android/android_sdk_path = "$ANDROID_HOME"
           export/android/java_sdk_path = "$JAVA_HOME"
           EOF
-          "$RUNNER_TEMP/godot" --headless --path . --export-debug Android build/GodotCore-debug-arm64.apk
-          test -s build/GodotCore-debug-arm64.apk
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify build/GodotCore-debug-arm64.apk
+      - name: Restore release signer
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_BASE64 KEY_ALIAS KEY_PASSWORD STORE_PASSWORD; do
+            if [[ -z "$(printenv "$name")" ]]; then
+              echo "::error::Missing repository secret: $name"
+              exit 1
+            fi
+          done
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/source.jks"
+          keytool -list -keystore "$RUNNER_TEMP/source.jks" -storepass:env STORE_PASSWORD -alias "$KEY_ALIAS" >/dev/null
+          keytool -importkeystore -noprompt \
+            -srckeystore "$RUNNER_TEMP/source.jks" -srcstorepass "$STORE_PASSWORD" \
+            -srcalias "$KEY_ALIAS" -srckeypass "$KEY_PASSWORD" \
+            -destkeystore "$RUNNER_TEMP/release.p12" -deststoretype PKCS12 \
+            -deststorepass "$KEY_PASSWORD" -destkeypass "$KEY_PASSWORD" -destalias "$KEY_ALIAS"
 
-      - name: Store smoke-test APK
+      - name: Export signed core release APK
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ runner.temp }}/release.p12
+          GODOT_ANDROID_KEYSTORE_RELEASE_USER: ${{ secrets.KEY_ALIAS }}
+          GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          "$RUNNER_TEMP/godot" --headless --path . --export-release Android build/GodotCore-release-arm64.apk 2>&1 | tee "$RUNNER_TEMP/export.log"
+          if grep -E 'SCRIPT ERROR:|SHADER ERROR:|^ERROR:|Parse Error:' "$RUNNER_TEMP/export.log"; then exit 1; fi
+          test -s build/GodotCore-release-arm64.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs build/GodotCore-release-arm64.apk
+          unzip -l build/GodotCore-release-arm64.apk | grep -F 'assets/' >/dev/null
+          analyzer="$(find "$ANDROID_HOME/cmdline-tools" -type f -name apkanalyzer | sort -V | tail -1)"
+          test -x "$analyzer"
+          package_id="$("$analyzer" manifest application-id build/GodotCore-release-arm64.apk)"
+          test "$package_id" = "com.edward9s.godotandroidcore"
+          test "$("$APK_ANALYZER" manifest debuggable build/GodotCore-release-arm64.apk)" = "false"
+          echo "Verified release package: $package_id"
+          python3 - <<'PYAPK'
+          import zipfile
+          apk = zipfile.ZipFile('build/GodotCore-release-arm64.apk')
+          abis = {name.split('/')[1] for name in apk.namelist() if name.startswith('lib/') and name.endswith('.so')}
+          assert abis == {'arm64-v8a'}, abis
+          PYAPK
+
+      - name: Store signed release APK
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: godot-core-debug-apk
-          path: build/GodotCore-debug-arm64.apk
+          name: godot-core-release-apk
+          path: build/GodotCore-release-arm64.apk
           if-no-files-found: error
           retention-days: 7
+
+      - name: Remove signing key files
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/source.jks" "$RUNNER_TEMP/release.p12"
