@@ -8,7 +8,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: godot-android-core-release
+  cancel-in-progress: false
 
 jobs:
   core:
@@ -138,14 +142,28 @@ jobs:
           assert abis == {'arm64-v8a'}, abis
           PYAPK
 
-      - name: Store signed release APK
+      - name: Publish rolling release
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: godot-core-release-apk
-          path: build/GodotCore-release-arm64.apk
-          if-no-files-found: error
-          retention-days: 7
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=test-build
+          apk=build/GodotCore-release-arm64.apk
+          notes="Signed Godot Android Core arm64 release APK.
+          Source commit: $GITHUB_SHA
+          Build: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "$apk" --clobber --repo "$GITHUB_REPOSITORY"
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$GITHUB_SHA" -F force=true >/dev/null
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" \
+              --title "Godot Android Core (latest #$GITHUB_RUN_NUMBER)" --notes "$notes" --prerelease --latest=false
+          else
+            gh release create "$tag" "$apk" --repo "$GITHUB_REPOSITORY" \
+              --title "Godot Android Core (latest #$GITHUB_RUN_NUMBER)" --notes "$notes" \
+              --prerelease --latest=false --target "$GITHUB_SHA"
+          fi
 
       - name: Remove signing key files
         if: always()
