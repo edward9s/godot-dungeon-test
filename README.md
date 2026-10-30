@@ -22,7 +22,9 @@ Open `project.godot` to inspect the reference scene.
 
 ## Android export
 
-The `Android core build` GitHub Actions workflow provides a reproducible validation and debug-export reference. It uses official Godot export templates and the Android SDK.
+The `Android core build` workflow runs headless validation on pull requests. Runs on `main` and manually dispatched runs export a signed arm64 release APK using the configured repository secrets. The launcher icon uses Godot's built-in default.
+
+The release export requires `KEYSTORE_BASE64`, `KEY_ALIAS`, `KEY_PASSWORD`, and `STORE_PASSWORD`. The signed APK is published to the public repository's rolling `test-build` prerelease under **Releases**.
 
 ## Integration
 
