@@ -62,6 +62,40 @@ jobs:
           timeout 30s "$RUNNER_TEMP/godot" --headless --path . --quit-after 8 2>&1 | tee "$RUNNER_TEMP/scene.log"
           if grep -E 'SCRIPT ERROR:|SHADER ERROR:|^ERROR:|Parse Error:' "$RUNNER_TEMP/core.log" "$RUNNER_TEMP/scene.log"; then exit 1; fi
 
+      - name: Verify core in an embedded Godot project
+        shell: bash
+        run: |
+          set -euo pipefail
+          embedded="$RUNNER_TEMP/embedded-core"
+          mkdir -p "$embedded/core/scripts"
+          cp project.godot "$embedded/core/project.godot"
+          cp scripts/dungeon_generator.gd scripts/navigation.gd "$embedded/core/scripts/"
+          cat > "$embedded/project.godot" <<'EOF'
+          config_version=5
+
+          [application]
+          config/name="Embedded Core Test"
+          EOF
+          cat > "$embedded/test.gd" <<'EOF'
+          extends SceneTree
+          const Generator = preload("res://core/scripts/dungeon_generator.gd")
+          const Navigation = preload("res://core/scripts/navigation.gd")
+
+          func _initialize() -> void:
+              var layout: Dictionary = Generator.new().generate(41041)
+              var navigation := Navigation.new()
+              navigation.build(layout)
+              assert(navigation.has_floor(Vector3.ZERO))
+              var target: Vector3 = Generator.world(layout.rooms[-1].center)
+              assert(not navigation.route(Vector3.ZERO, target).is_empty())
+              print("Embedded core validation passed")
+              quit()
+          EOF
+          "$RUNNER_TEMP/godot" --headless --path "$embedded" --editor --import --quit 2>&1 | tee "$RUNNER_TEMP/embedded-import.log"
+          "$RUNNER_TEMP/godot" --headless --path "$embedded" --script "$embedded/test.gd" 2>&1 | tee "$RUNNER_TEMP/embedded-test.log"
+          grep -F "Embedded core validation passed" "$RUNNER_TEMP/embedded-test.log"
+          if grep -E 'SCRIPT ERROR:|SHADER ERROR:|^ERROR:|Parse Error:' "$RUNNER_TEMP/embedded-import.log" "$RUNNER_TEMP/embedded-test.log"; then exit 1; fi
+
       - name: Verify default Godot icon configuration
         shell: bash
         run: |
