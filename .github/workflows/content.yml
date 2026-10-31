@@ -96,7 +96,7 @@ jobs:
           export/android/java_sdk_path = "$JAVA_HOME"
           EOF
           "$RUNNER_TEMP/godot" --headless --path . --editor --import --quit 2>&1 | tee "$RUNNER_TEMP/import.log"
-          if grep -E 'SCRIPT ERROR:|SHADER ERROR:|^ERROR:|Parse Error:' "$RUNNER_TEMP/import.log"; then exit 1; fi
+          if grep -E 'SCRIPT ERROR:|SHADER ERROR:|^ERROR:|Parse Error:|Detected another project.godot' "$RUNNER_TEMP/import.log"; then exit 1; fi
 
       - name: Test deterministic layout and scene creation
         shell: bash
