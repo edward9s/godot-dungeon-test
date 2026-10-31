@@ -45,6 +45,9 @@ jobs:
           git -C core rev-parse --verify HEAD
           git rev-parse --verify HEAD
 
+      - name: Prepare embedded core for Godot import
+        run: bash tools/prepare_core.sh
+
       - name: Java 17
         uses: actions/setup-java@v4
         with:
@@ -93,7 +96,7 @@ jobs:
           export/android/java_sdk_path = "$JAVA_HOME"
           EOF
           "$RUNNER_TEMP/godot" --headless --path . --editor --import --quit 2>&1 | tee "$RUNNER_TEMP/import.log"
-          if grep -E 'SCRIPT ERROR:|SHADER ERROR:|^ERROR:|Parse Error:' "$RUNNER_TEMP/import.log"; then exit 1; fi
+          if grep -E 'SCRIPT ERROR:|SHADER ERROR:|^ERROR:|Parse Error:|Detected another project.godot' "$RUNNER_TEMP/import.log"; then exit 1; fi
 
       - name: Test deterministic layout and scene creation
         shell: bash
@@ -115,6 +118,12 @@ jobs:
           if grep -E 'SCRIPT ERROR:|SHADER ERROR:|^ERROR:|Parse Error:' "$RUNNER_TEMP/generator.log" "$RUNNER_TEMP/controls.log" "$RUNNER_TEMP/combat.log" "$RUNNER_TEMP/navigation.log" "$RUNNER_TEMP/orders.log" "$RUNNER_TEMP/gestures.log" "$RUNNER_TEMP/scene.log"; then
             exit 1
           fi
+
+      - name: Verify exported private core resources
+        shell: bash
+        env:
+          GODOT: ${{ runner.temp }}/godot
+        run: bash tools/verify_export.sh
 
       - name: Restore existing release signer
         shell: bash
