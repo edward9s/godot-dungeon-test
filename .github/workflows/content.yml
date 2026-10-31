@@ -119,6 +119,12 @@ jobs:
             exit 1
           fi
 
+      - name: Verify exported private core resources
+        shell: bash
+        env:
+          GODOT: ${{ runner.temp }}/godot
+        run: bash tools/verify_export.sh
+
       - name: Restore existing release signer
         shell: bash
         env:
