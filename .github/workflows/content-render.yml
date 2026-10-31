@@ -45,6 +45,9 @@ jobs:
           git -C core rev-parse --verify HEAD
           git rev-parse --verify HEAD
 
+      - name: Prepare embedded core for Godot import
+        run: bash tools/prepare_core.sh
+
       - name: Install Godot 4.7.2
         shell: bash
         run: |
